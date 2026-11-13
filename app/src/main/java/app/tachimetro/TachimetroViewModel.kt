@@ -34,7 +34,11 @@ data class TachimetroState(
     val via: String? = null,
     val statoVia: StreetStatus = StreetStatus.IN_RICERCA,
     val gps: GpsStatus = GpsStatus.IN_ATTESA,
-)
+    val limite: Int? = null, // limite di velocità della strada, se OpenStreetMap lo conosce
+) {
+    /** Rosso appena la velocità del GPS supera il limite, anche solo di 1 km/h. */
+    val oltreIlLimite: Boolean get() = kmh != null && limite != null && kmh > limite
+}
 
 class TachimetroViewModel(app: Application) : AndroidViewModel(app) {
 
@@ -42,6 +46,21 @@ class TachimetroViewModel(app: Application) : AndroidViewModel(app) {
     private val locationManager = app.getSystemService(LocationManager::class.java)
     private val resolver = StreetNameResolver(app)
     private val policy = StreetLookupPolicy()
+
+    // Limite di velocità: scarichiamo le strade intorno a noi (circa 300 m) e le riconosciamo sul telefono.
+    private val overpass = OverpassClient()
+    private val policyStrade = StreetLookupPolicy(
+        intervalloMs = 10_000,
+        attesaDopoErroreMs = 30_000,
+        distanzaMinimaM = 200f, // riscarichiamo prima di uscire dalla zona già scaricata
+    )
+    private var stradeVicine: List<Road> = emptyList()
+    private var centroStrade: Location? = null
+    private var ultimoScaricamentoMs: Long? = null
+    private var ultimoScaricamentoFallito = false
+    private var scaricamentoJob: Job? = null
+    private var ultimoLimite: Int? = null
+    private var ultimaStradaTrovataMs = 0L
 
     private val _state = MutableStateFlow(TachimetroState())
     val state: StateFlow<TachimetroState> = _state.asStateFlow()
@@ -121,14 +140,18 @@ class TachimetroViewModel(app: Application) : AndroidViewModel(app) {
         ultimaPosizione = loc
         ultimaPosizioneRicevutaMs = SystemClock.elapsedRealtime()
 
+        aggiornaLimite(loc)
+
         _state.update {
             it.copy(
                 kmh = Motion.kmh(speedMs),
                 direzione = ultimaDirezione?.let(Compass::sigla),
                 gps = GpsStatus.OK,
+                limite = ultimoLimite,
             )
         }
         forseCercaVia(loc)
+        forseScaricaStrade(loc)
     }
 
     private fun forseCercaVia(loc: Location) {
@@ -155,6 +178,38 @@ class TachimetroViewModel(app: Application) : AndroidViewModel(app) {
                     ultimoTentativoFallito = true
                     _state.update { it.copy(statoVia = StreetStatus.SENZA_INTERNET) }
                 }
+            }
+        }
+    }
+
+    private fun aggiornaLimite(loc: Location) {
+        val ora = SystemClock.elapsedRealtime()
+        val strada = SpeedLimits.trova(stradeVicine, GeoPoint(loc.latitude, loc.longitude), ultimaDirezione)
+        if (strada != null) {
+            ultimoLimite = SpeedLimits.limite(strada.road.tags, strada.forward)
+            ultimaStradaTrovataMs = ora
+        } else if (ora - ultimaStradaTrovataMs > 5_000) {
+            // Nessuna strada riconosciuta da 5 secondi: meglio non mostrare un limite sbagliato.
+            ultimoLimite = null
+        }
+    }
+
+    private fun forseScaricaStrade(loc: Location) {
+        if (scaricamentoJob?.isActive == true) return
+        val ora = SystemClock.elapsedRealtime()
+        val distanza = centroStrade?.distanceTo(loc)
+        if (!policyStrade.daCercare(ora, ultimoScaricamentoMs, ultimoScaricamentoFallito, distanza)) return
+
+        ultimoScaricamentoMs = ora
+        scaricamentoJob = viewModelScope.launch {
+            val strade = overpass.stradeVicine(loc.latitude, loc.longitude)
+            if (strade != null) {
+                stradeVicine = strade
+                centroStrade = loc
+                ultimoScaricamentoFallito = false
+            } else {
+                // Senza internet teniamo le strade già scaricate: funzionano finché restiamo in zona.
+                ultimoScaricamentoFallito = true
             }
         }
     }
