@@ -147,11 +147,9 @@ private fun QuadrantePip(state: TachimetroState) {
                 )
                 Text("KM/H", color = Grigio, fontFamily = Mono, fontSize = altezzaUnita, letterSpacing = 0.35.em)
             }
-            // Cartello del limite a destra, solo se il limite è noto.
-            state.limite?.let {
-                Spacer(Modifier.width(4.dp))
-                Cartello(it, Modifier.fillMaxHeight(0.45f))
-            }
+            // Cartello del limite a destra, sempre visibile ("--" se il limite non è noto).
+            Spacer(Modifier.width(4.dp))
+            Cartello(state.limite, Modifier.fillMaxHeight(0.45f))
         }
     }
 }
@@ -212,10 +210,8 @@ private fun RigaStato(state: TachimetroState, modifier: Modifier = Modifier) {
 @Composable
 private fun BloccoViaQuadrante(state: TachimetroState, modifier: Modifier = Modifier) {
     Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
-        state.limite?.let {
-            Cartello(it, Modifier.size(64.dp))
-            Spacer(Modifier.width(16.dp))
-        }
+        Cartello(state.limite, Modifier.size(64.dp))
+        Spacer(Modifier.width(16.dp))
         Column(Modifier.weight(1f, fill = false), horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
                 testoViaMaiuscolo(state),
