@@ -10,31 +10,42 @@ import android.os.Bundle
 import android.provider.Settings
 import android.util.Rational
 import android.view.WindowManager
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.tachimetro.ui.Ambra
 import app.tachimetro.ui.GpsSpentoScreen
 import app.tachimetro.ui.Nero
 import app.tachimetro.ui.PermessoScreen
+import app.tachimetro.ui.QuadranteScreen
 import app.tachimetro.ui.StatoPermesso
 import app.tachimetro.ui.TachimetroScreen
+
+/** Temi grafici: si cambiano tenendo premuto il dito sullo schermo. */
+enum class Tema(val nome: String) { CLASSICO("Classico"), QUADRANTE("Quadrante") }
 
 class MainActivity : ComponentActivity() {
 
     private val viewModel: TachimetroViewModel by viewModels()
 
     private var inPip by mutableStateOf(false)
+    private var tema by mutableStateOf(Tema.CLASSICO)
     private var permesso by mutableStateOf(StatoPermesso(concesso = false, soloApprossimativa = false, bloccato = false))
 
     private val richiestaPermesso = registerForActivityResult(
@@ -57,6 +68,9 @@ class MainActivity : ComponentActivity() {
         inPip = isInPictureInPictureMode
         addOnPictureInPictureModeChangedListener { info -> inPip = info.isInPictureInPictureMode }
 
+        tema = Tema.entries.firstOrNull { it.name == getPreferences(MODE_PRIVATE).getString(CHIAVE_TEMA, null) }
+            ?: Tema.CLASSICO
+
         aggiornaPermesso()
 
         setContent {
@@ -69,7 +83,16 @@ class MainActivity : ComponentActivity() {
                         onApriImpostazioni = ::apriImpostazioniApp,
                     )
                     state.gps == GpsStatus.SPENTO && !inPip -> GpsSpentoScreen(onAttiva = ::apriImpostazioniPosizione)
-                    else -> TachimetroScreen(state, inPip)
+                    else -> Box(
+                        Modifier
+                            .fillMaxSize()
+                            .pointerInput(Unit) { detectTapGestures(onLongPress = { cambiaTema() }) }
+                    ) {
+                        when (tema) {
+                            Tema.CLASSICO -> TachimetroScreen(state, inPip)
+                            Tema.QUADRANTE -> QuadranteScreen(state, inPip)
+                        }
+                    }
                 }
             }
         }
@@ -96,6 +119,13 @@ class MainActivity : ComponentActivity() {
                 // PiP disattivato per questa app nelle impostazioni del telefono
             }
         }
+    }
+
+    private fun cambiaTema() {
+        if (inPip) return
+        tema = Tema.entries[(tema.ordinal + 1) % Tema.entries.size]
+        getPreferences(MODE_PRIVATE).edit().putString(CHIAVE_TEMA, tema.name).apply()
+        Toast.makeText(this, "Tema: ${tema.nome}", Toast.LENGTH_SHORT).show()
     }
 
     private fun aggiornaPermesso() {
@@ -155,5 +185,6 @@ class MainActivity : ComponentActivity() {
 
     private companion object {
         const val CHIAVE_GIA_CHIESTO = "permesso_gia_chiesto"
+        const val CHIAVE_TEMA = "tema"
     }
 }
