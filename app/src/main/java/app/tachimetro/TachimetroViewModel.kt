@@ -2,6 +2,10 @@ package app.tachimetro
 
 import android.annotation.SuppressLint
 import android.app.Application
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import android.location.Location
 import android.location.LocationManager
 import android.os.Looper
@@ -67,6 +71,31 @@ class TachimetroViewModel(app: Application) : AndroidViewModel(app) {
     val state: StateFlow<TachimetroState> = _state.asStateFlow()
 
     private var attivo = false
+    private val ritmo = RitmoGps()
+
+    // Accelerometro: acceso solo da fermi, per accorgerci subito della ripartenza.
+    private val sensori = app.getSystemService(SensorManager::class.java)
+    private val sensoreLineare: Sensor? = sensori?.getDefaultSensor(Sensor.TYPE_LINEAR_ACCELERATION)
+    private val sensoreGrezzo: Sensor? = sensori?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+    private val rilevatore = RilevatoreRipartenza()
+    private var accelerometroAcceso = false
+    private val gravita = FloatArray(3)
+
+    private val ascoltaAccelerometro = object : SensorEventListener {
+        override fun onSensorChanged(event: SensorEvent) {
+            val v = event.values
+            val (x, y, z) = if (event.sensor.type == Sensor.TYPE_LINEAR_ACCELERATION) {
+                Triple(v[0], v[1], v[2])
+            } else {
+                // Senza sensore "lineare" togliamo noi la gravità con un filtro lento.
+                for (i in 0..2) gravita[i] = 0.9f * gravita[i] + 0.1f * v[i]
+                Triple(v[0] - gravita[0], v[1] - gravita[1], v[2] - gravita[2])
+            }
+            if (rilevatore.campione(x, y, z, event.timestamp / 1_000_000L)) ripartito()
+        }
+
+        override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
+    }
     private var controlloJob: Job? = null
     private var ricercaViaJob: Job? = null
 
@@ -88,15 +117,8 @@ class TachimetroViewModel(app: Application) : AndroidViewModel(app) {
     @SuppressLint("MissingPermission")
     fun avvia() {
         if (attivo) return
-        val richiesta = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 1_000L)
-            .setMinUpdateIntervalMillis(500L)
-            .setWaitForAccurateLocation(false)
-            .build()
-        try {
-            fused.requestLocationUpdates(richiesta, callback, Looper.getMainLooper())
-        } catch (e: SecurityException) {
-            return // permesso non concesso
-        }
+        ritmo.azzera()
+        if (!richiediPosizioni()) return // permesso non concesso
         attivo = true
         controlloJob = viewModelScope.launch {
             while (isActive) {
@@ -106,10 +128,33 @@ class TachimetroViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /**
+     * Chiede le posizioni al GPS: una al secondo quando ci muoviamo,
+     * una ogni 10 secondi quando siamo fermi da più di 2 secondi (risparmia batteria).
+     * Anche da fermi accettiamo posizioni fino a una al secondo se il telefono le ha già
+     * (per esempio perché un navigatore sta usando il GPS): così ci accorgiamo prima della ripartenza.
+     * Richiamarla con lo stesso callback sostituisce la richiesta precedente.
+     */
+    @SuppressLint("MissingPermission")
+    private fun richiediPosizioni(): Boolean {
+        val intervallo = if (ritmo.lento) 10_000L else 1_000L
+        val richiesta = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, intervallo)
+            .setMinUpdateIntervalMillis(if (ritmo.lento) 1_000L else 500L)
+            .setWaitForAccurateLocation(false)
+            .build()
+        return try {
+            fused.requestLocationUpdates(richiesta, callback, Looper.getMainLooper())
+            true
+        } catch (e: SecurityException) {
+            false
+        }
+    }
+
     /** Ferma il GPS quando l'app non è più visibile (risparmia batteria). */
     fun ferma() {
         if (!attivo) return
         attivo = false
+        spegniAccelerometro()
         fused.removeLocationUpdates(callback)
         controlloJob?.cancel()
     }
@@ -143,9 +188,15 @@ class TachimetroViewModel(app: Application) : AndroidViewModel(app) {
 
         aggiornaLimite(loc)
 
+        val kmh = Motion.kmh(speedMs)
+        if (ritmo.aggiorna(kmh, SystemClock.elapsedRealtime()) && attivo) {
+            richiediPosizioni()
+            if (ritmo.lento) accendiAccelerometro() else spegniAccelerometro()
+        }
+
         _state.update {
             it.copy(
-                kmh = Motion.kmh(speedMs),
+                kmh = kmh,
                 direzione = ultimaDirezione?.let(Compass::sigla),
                 gps = GpsStatus.OK,
                 limite = ultimoLimite,
@@ -181,6 +232,29 @@ class TachimetroViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
         }
+    }
+
+    /** L'accelerometro ha sentito una ripartenza: GPS di nuovo veloce, subito. */
+    private fun ripartito() {
+        if (!attivo || !ritmo.lento) return
+        ritmo.risveglia(SystemClock.elapsedRealtime())
+        spegniAccelerometro()
+        richiediPosizioni()
+    }
+
+    private fun accendiAccelerometro() {
+        if (accelerometroAcceso) return
+        val sensore = sensoreLineare ?: sensoreGrezzo ?: return
+        rilevatore.azzera()
+        gravita.fill(0f)
+        // 25 letture al secondo: bastano e consumano pochissimo.
+        accelerometroAcceso = sensori?.registerListener(ascoltaAccelerometro, sensore, 40_000) == true
+    }
+
+    private fun spegniAccelerometro() {
+        if (!accelerometroAcceso) return
+        sensori?.unregisterListener(ascoltaAccelerometro)
+        accelerometroAcceso = false
     }
 
     private fun aggiornaLimite(loc: Location) {
@@ -224,7 +298,7 @@ class TachimetroViewModel(app: Application) : AndroidViewModel(app) {
         val gps = when {
             !acceso -> GpsStatus.SPENTO
             ultimaPosizione == null -> GpsStatus.IN_ATTESA
-            eta > 5_000 -> GpsStatus.DEBOLE
+            eta > (if (ritmo.lento) 15_000 else 5_000) -> GpsStatus.DEBOLE
             else -> GpsStatus.OK
         }
         _state.update { s -> s.copy(gps = gps, kmh = if (gps == GpsStatus.OK) s.kmh else null) }

@@ -1,5 +1,6 @@
 package app.tachimetro.ui
 
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
@@ -121,20 +122,36 @@ private fun QuadranteOrizzontale(state: TachimetroState) {
     }
 }
 
-/** Finestrella: solo il quadrante (senza numeri della scala, troppo piccoli), direzione e cartello. */
+/**
+ * Finestrella: il numero il più grande possibile, senza quadrante, e il cartello del limite.
+ * Stesso carattere e stessi colori del tema: bianco, rosso oltre il limite, "KM/H" spaziato sotto.
+ */
 @Composable
 private fun QuadrantePip(state: TachimetroState) {
-    Box(Modifier.fillMaxSize().padding(4.dp)) {
-        Quadrante(state, Modifier.fillMaxHeight().align(Alignment.Center), scala = false)
-        Text(
-            state.direzione ?: "–",
-            color = Rosso,
-            fontFamily = Mono,
-            fontWeight = FontWeight.Bold,
-            fontSize = 14.sp,
-            modifier = Modifier.align(Alignment.TopStart).padding(4.dp),
-        )
-        state.limite?.let { Cartello(it, Modifier.align(Alignment.BottomEnd).size(34.dp)) }
+    BoxWithConstraints(
+        Modifier
+            .fillMaxSize()
+            .background(Brush.radialGradient(listOf(FondoCentro, FondoBordo))),
+        contentAlignment = Alignment.Center,
+    ) {
+        val altezzaUnita = with(LocalDensity.current) { (maxHeight * 0.13f).toSp() }
+        Row(
+            Modifier.fillMaxSize().padding(horizontal = 6.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f).fillMaxHeight(), horizontalAlignment = Alignment.CenterHorizontally) {
+                TestoGrande(
+                    state.kmh?.toString() ?: "--",
+                    if (state.oltreIlLimite) Rosso else Bianco,
+                    larghezzaEm = 1.85f,
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                )
+                Text("KM/H", color = Grigio, fontFamily = Mono, fontSize = altezzaUnita, letterSpacing = 0.35.em)
+            }
+            // Cartello del limite a destra, sempre visibile ("--" se il limite non è noto).
+            Spacer(Modifier.width(4.dp))
+            Cartello(state.limite, Modifier.fillMaxHeight(0.45f))
+        }
     }
 }
 
@@ -194,10 +211,8 @@ private fun RigaStato(state: TachimetroState, modifier: Modifier = Modifier) {
 @Composable
 private fun BloccoViaQuadrante(state: TachimetroState, modifier: Modifier = Modifier) {
     Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
-        state.limite?.let {
-            Cartello(it, Modifier.size(64.dp))
-            Spacer(Modifier.width(16.dp))
-        }
+        Cartello(state.limite, Modifier.size(64.dp))
+        Spacer(Modifier.width(16.dp))
         Column(Modifier.weight(1f, fill = false), horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
                 testoViaMaiuscolo(state),
@@ -251,7 +266,8 @@ private fun Quadrante(state: TachimetroState, modifier: Modifier = Modifier, sca
     val haSegnale = state.kmh != null
     val velocita by animateFloatAsState(
         targetValue = (state.kmh ?: 0).toFloat(),
-        animationSpec = tween(durationMillis = 500),
+        // 1 secondo, come l'intervallo del GPS: l'arco si muove in modo continuo tra un dato e l'altro.
+        animationSpec = tween(durationMillis = 1_000, easing = LinearEasing),
         label = "velocita",
     )
     val limite: Limite? = state.limite
