@@ -122,7 +122,7 @@ private fun QuadranteOrizzontale(state: TachimetroState) {
 }
 
 /**
- * Finestrella: solo il numero, il più grande possibile, senza quadrante.
+ * Finestrella: il numero il più grande possibile, senza quadrante, e il cartello del limite.
  * Stesso carattere e stessi colori del tema: bianco, rosso oltre il limite, "KM/H" spaziato sotto.
  */
 @Composable
@@ -134,17 +134,24 @@ private fun QuadrantePip(state: TachimetroState) {
         contentAlignment = Alignment.Center,
     ) {
         val altezzaUnita = with(LocalDensity.current) { (maxHeight * 0.13f).toSp() }
-        Column(
+        Row(
             Modifier.fillMaxSize().padding(horizontal = 6.dp, vertical = 4.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            TestoGrande(
-                state.kmh?.toString() ?: "--",
-                if (state.oltreIlLimite) Rosso else Bianco,
-                larghezzaEm = 1.85f,
-                modifier = Modifier.weight(1f).fillMaxWidth(),
-            )
-            Text("KM/H", color = Grigio, fontFamily = Mono, fontSize = altezzaUnita, letterSpacing = 0.35.em)
+            Column(Modifier.weight(1f).fillMaxHeight(), horizontalAlignment = Alignment.CenterHorizontally) {
+                TestoGrande(
+                    state.kmh?.toString() ?: "--",
+                    if (state.oltreIlLimite) Rosso else Bianco,
+                    larghezzaEm = 1.85f,
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                )
+                Text("KM/H", color = Grigio, fontFamily = Mono, fontSize = altezzaUnita, letterSpacing = 0.35.em)
+            }
+            // Cartello del limite a destra, solo se il limite è noto.
+            state.limite?.let {
+                Spacer(Modifier.width(4.dp))
+                Cartello(it, Modifier.fillMaxHeight(0.45f))
+            }
         }
     }
 }
