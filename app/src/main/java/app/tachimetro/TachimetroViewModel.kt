@@ -102,14 +102,16 @@ class TachimetroViewModel(app: Application) : AndroidViewModel(app) {
 
     /**
      * Chiede le posizioni al GPS: una al secondo quando ci muoviamo,
-     * una ogni 3 secondi quando siamo fermi da un po' (risparmia batteria).
+     * una ogni 10 secondi quando siamo fermi da più di 2 secondi (risparmia batteria).
+     * Anche da fermi accettiamo posizioni fino a una al secondo se il telefono le ha già
+     * (per esempio perché un navigatore sta usando il GPS): così ci accorgiamo prima della ripartenza.
      * Richiamarla con lo stesso callback sostituisce la richiesta precedente.
      */
     @SuppressLint("MissingPermission")
     private fun richiediPosizioni(): Boolean {
-        val intervallo = if (ritmo.lento) 3_000L else 1_000L
+        val intervallo = if (ritmo.lento) 10_000L else 1_000L
         val richiesta = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, intervallo)
-            .setMinUpdateIntervalMillis(intervallo / 2)
+            .setMinUpdateIntervalMillis(if (ritmo.lento) 1_000L else 500L)
             .setWaitForAccurateLocation(false)
             .build()
         return try {
@@ -241,7 +243,7 @@ class TachimetroViewModel(app: Application) : AndroidViewModel(app) {
         val gps = when {
             !acceso -> GpsStatus.SPENTO
             ultimaPosizione == null -> GpsStatus.IN_ATTESA
-            eta > (if (ritmo.lento) 8_000 else 5_000) -> GpsStatus.DEBOLE
+            eta > (if (ritmo.lento) 15_000 else 5_000) -> GpsStatus.DEBOLE
             else -> GpsStatus.OK
         }
         _state.update { s -> s.copy(gps = gps, kmh = if (gps == GpsStatus.OK) s.kmh else null) }

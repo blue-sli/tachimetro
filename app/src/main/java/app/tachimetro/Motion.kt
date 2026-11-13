@@ -69,7 +69,7 @@ class StreetLookupPolicy(
  * Risparmio batteria: se l'auto resta ferma per [attesaPrimaDiRallentareMs], il GPS può rallentare.
  * Appena la velocità torna sopra zero si torna subito al ritmo normale.
  */
-class RitmoGps(private val attesaPrimaDiRallentareMs: Long = 10_000) {
+class RitmoGps(private val attesaPrimaDiRallentareMs: Long = 2_000) {
     var lento = false
         private set
     private var fermoDaMs: Long? = null

@@ -1,5 +1,6 @@
 package app.tachimetro.ui
 
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
@@ -265,7 +266,8 @@ private fun Quadrante(state: TachimetroState, modifier: Modifier = Modifier, sca
     val haSegnale = state.kmh != null
     val velocita by animateFloatAsState(
         targetValue = (state.kmh ?: 0).toFloat(),
-        animationSpec = tween(durationMillis = 500),
+        // 1 secondo, come l'intervallo del GPS: l'arco si muove in modo continuo tra un dato e l'altro.
+        animationSpec = tween(durationMillis = 1_000, easing = LinearEasing),
         label = "velocita",
     )
     val limite: Limite? = state.limite
