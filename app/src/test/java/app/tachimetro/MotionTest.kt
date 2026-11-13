@@ -81,4 +81,28 @@ class MotionTest {
         assertFalse(p.daCercare(10_000, 0, true, 0f))
         assertTrue(p.daCercare(15_000, 0, true, 0f))
     }
+
+    @Test
+    fun ilGpsRallentaSoloDopoDieciSecondiDaFermi() {
+        val r = RitmoGps()
+        assertFalse(r.aggiorna(0, 0))
+        assertFalse(r.aggiorna(0, 9_000))
+        assertFalse(r.lento)
+        assertTrue(r.aggiorna(0, 10_000)) // cambio di ritmo
+        assertTrue(r.lento)
+        assertFalse(r.aggiorna(0, 15_000)) // già lento: nessun cambio
+    }
+
+    @Test
+    fun appenaSiRipartesTornaVeloce() {
+        val r = RitmoGps()
+        r.aggiorna(0, 0)
+        r.aggiorna(0, 10_000)
+        assertTrue(r.aggiorna(12, 11_000))
+        assertFalse(r.lento)
+        // Una sosta breve non basta per rallentare di nuovo.
+        assertFalse(r.aggiorna(0, 12_000))
+        assertFalse(r.aggiorna(0, 21_000))
+        assertTrue(r.aggiorna(0, 22_000))
+    }
 }

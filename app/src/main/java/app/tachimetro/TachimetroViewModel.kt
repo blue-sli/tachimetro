@@ -67,6 +67,7 @@ class TachimetroViewModel(app: Application) : AndroidViewModel(app) {
     val state: StateFlow<TachimetroState> = _state.asStateFlow()
 
     private var attivo = false
+    private val ritmo = RitmoGps()
     private var controlloJob: Job? = null
     private var ricercaViaJob: Job? = null
 
@@ -88,21 +89,34 @@ class TachimetroViewModel(app: Application) : AndroidViewModel(app) {
     @SuppressLint("MissingPermission")
     fun avvia() {
         if (attivo) return
-        val richiesta = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 1_000L)
-            .setMinUpdateIntervalMillis(500L)
-            .setWaitForAccurateLocation(false)
-            .build()
-        try {
-            fused.requestLocationUpdates(richiesta, callback, Looper.getMainLooper())
-        } catch (e: SecurityException) {
-            return // permesso non concesso
-        }
+        ritmo.azzera()
+        if (!richiediPosizioni()) return // permesso non concesso
         attivo = true
         controlloJob = viewModelScope.launch {
             while (isActive) {
                 controllaSegnale()
                 delay(1_000)
             }
+        }
+    }
+
+    /**
+     * Chiede le posizioni al GPS: una al secondo quando ci muoviamo,
+     * una ogni 3 secondi quando siamo fermi da un po' (risparmia batteria).
+     * Richiamarla con lo stesso callback sostituisce la richiesta precedente.
+     */
+    @SuppressLint("MissingPermission")
+    private fun richiediPosizioni(): Boolean {
+        val intervallo = if (ritmo.lento) 3_000L else 1_000L
+        val richiesta = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, intervallo)
+            .setMinUpdateIntervalMillis(intervallo / 2)
+            .setWaitForAccurateLocation(false)
+            .build()
+        return try {
+            fused.requestLocationUpdates(richiesta, callback, Looper.getMainLooper())
+            true
+        } catch (e: SecurityException) {
+            false
         }
     }
 
@@ -143,9 +157,12 @@ class TachimetroViewModel(app: Application) : AndroidViewModel(app) {
 
         aggiornaLimite(loc)
 
+        val kmh = Motion.kmh(speedMs)
+        if (ritmo.aggiorna(kmh, SystemClock.elapsedRealtime()) && attivo) richiediPosizioni()
+
         _state.update {
             it.copy(
-                kmh = Motion.kmh(speedMs),
+                kmh = kmh,
                 direzione = ultimaDirezione?.let(Compass::sigla),
                 gps = GpsStatus.OK,
                 limite = ultimoLimite,
@@ -224,7 +241,7 @@ class TachimetroViewModel(app: Application) : AndroidViewModel(app) {
         val gps = when {
             !acceso -> GpsStatus.SPENTO
             ultimaPosizione == null -> GpsStatus.IN_ATTESA
-            eta > 5_000 -> GpsStatus.DEBOLE
+            eta > (if (ritmo.lento) 8_000 else 5_000) -> GpsStatus.DEBOLE
             else -> GpsStatus.OK
         }
         _state.update { s -> s.copy(gps = gps, kmh = if (gps == GpsStatus.OK) s.kmh else null) }

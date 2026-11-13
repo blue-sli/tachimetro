@@ -64,3 +64,31 @@ class StreetLookupPolicy(
         return distanzaDallUltimaViaM == null || distanzaDallUltimaViaM >= distanzaMinimaM
     }
 }
+
+/**
+ * Risparmio batteria: se l'auto resta ferma per [attesaPrimaDiRallentareMs], il GPS può rallentare.
+ * Appena la velocità torna sopra zero si torna subito al ritmo normale.
+ */
+class RitmoGps(private val attesaPrimaDiRallentareMs: Long = 10_000) {
+    var lento = false
+        private set
+    private var fermoDaMs: Long? = null
+
+    /** Da chiamare a ogni posizione. Restituisce true se il ritmo è appena cambiato. */
+    fun aggiorna(kmh: Int, oraMs: Long): Boolean {
+        val prima = lento
+        if (kmh > 0) {
+            fermoDaMs = null
+            lento = false
+        } else {
+            val da = fermoDaMs ?: oraMs.also { fermoDaMs = it }
+            if (oraMs - da >= attesaPrimaDiRallentareMs) lento = true
+        }
+        return lento != prima
+    }
+
+    fun azzera() {
+        lento = false
+        fermoDaMs = null
+    }
+}
