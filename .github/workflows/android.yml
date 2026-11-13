@@ -21,16 +21,16 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Scarica il codice
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Installa Java 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
 
       - name: Prepara Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v5
 
       # Facoltativo: se nei segreti del repository c'è la chiave di firma, la usiamo,
       # così ogni nuovo APK si installa sopra il precedente senza disinstallare.
@@ -57,7 +57,7 @@ jobs:
         run: cp app/build/outputs/apk/release/app-release.apk "tachimetro-build-${GITHUB_RUN_NUMBER}.apk"
 
       - name: Salva l'APK tra i file della compilazione
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: tachimetro-build-${{ github.run_number }}
           path: tachimetro-build-*.apk
