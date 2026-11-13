@@ -121,20 +121,31 @@ private fun QuadranteOrizzontale(state: TachimetroState) {
     }
 }
 
-/** Finestrella: solo il quadrante (senza numeri della scala, troppo piccoli), direzione e cartello. */
+/**
+ * Finestrella: solo il numero, il più grande possibile, senza quadrante.
+ * Stesso carattere e stessi colori del tema: bianco, rosso oltre il limite, "KM/H" spaziato sotto.
+ */
 @Composable
 private fun QuadrantePip(state: TachimetroState) {
-    Box(Modifier.fillMaxSize().padding(4.dp)) {
-        Quadrante(state, Modifier.fillMaxHeight().align(Alignment.Center), scala = false)
-        Text(
-            state.direzione ?: "–",
-            color = Rosso,
-            fontFamily = Mono,
-            fontWeight = FontWeight.Bold,
-            fontSize = 14.sp,
-            modifier = Modifier.align(Alignment.TopStart).padding(4.dp),
-        )
-        state.limite?.let { Cartello(it, Modifier.align(Alignment.BottomEnd).size(34.dp)) }
+    BoxWithConstraints(
+        Modifier
+            .fillMaxSize()
+            .background(Brush.radialGradient(listOf(FondoCentro, FondoBordo))),
+        contentAlignment = Alignment.Center,
+    ) {
+        val altezzaUnita = with(LocalDensity.current) { (maxHeight * 0.13f).toSp() }
+        Column(
+            Modifier.fillMaxSize().padding(horizontal = 6.dp, vertical = 4.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            TestoGrande(
+                state.kmh?.toString() ?: "--",
+                if (state.oltreIlLimite) Rosso else Bianco,
+                larghezzaEm = 1.85f,
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+            )
+            Text("KM/H", color = Grigio, fontFamily = Mono, fontSize = altezzaUnita, letterSpacing = 0.35.em)
+        }
     }
 }
 
