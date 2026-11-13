@@ -1,11 +1,14 @@
 package app.tachimetro.ui
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -25,6 +28,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.tachimetro.GpsStatus
+import app.tachimetro.Limite
 import app.tachimetro.StreetStatus
 import app.tachimetro.TachimetroState
 import kotlin.math.min
@@ -34,6 +38,9 @@ val Bianco = Color(0xFFFFFFFF)
 val Ambra = Color(0xFFFFC107)
 val GrigioChiaro = Color(0xFFE0E0E0)
 val Grigio = Color(0xFF9E9E9E)
+val Rosso = Color(0xFFFF3B30)
+val RossoCartello = Color(0xFFD32F2F)
+val GrigioScuro = Color(0xFF616161)
 
 @Composable
 fun TachimetroScreen(state: TachimetroState, inPip: Boolean) {
@@ -59,8 +66,11 @@ private fun LayoutVerticale(state: TachimetroState) {
             .padding(horizontal = 24.dp, vertical = 16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        TestoGrande(state.direzione ?: "–", Ambra, larghezzaEm = 1.6f, modifier = Modifier.weight(0.2f).fillMaxWidth())
-        TestoGrande(velocita(state), Bianco, larghezzaEm = 1.85f, modifier = Modifier.weight(0.5f).fillMaxWidth())
+        Row(Modifier.weight(0.2f).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            TestoGrande(state.direzione ?: "–", Ambra, larghezzaEm = 1.6f, modifier = Modifier.weight(1f).fillMaxSize())
+            state.limite?.let { Cartello(it, Modifier.fillMaxHeight(0.9f)) }
+        }
+        TestoGrande(velocita(state), coloreVelocita(state), larghezzaEm = 1.85f, modifier = Modifier.weight(0.5f).fillMaxWidth())
         Text("km/h", color = Grigio, fontSize = 28.sp)
         MessaggioGps(state.gps, 18)
         Box(Modifier.weight(0.3f).fillMaxWidth(), contentAlignment = Alignment.Center) {
@@ -79,7 +89,7 @@ private fun LayoutOrizzontale(state: TachimetroState) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(0.6f).fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
-            TestoGrande(velocita(state), Bianco, larghezzaEm = 1.85f, modifier = Modifier.weight(1f).fillMaxWidth())
+            TestoGrande(velocita(state), coloreVelocita(state), larghezzaEm = 1.85f, modifier = Modifier.weight(1f).fillMaxWidth())
             Text("km/h", color = Grigio, fontSize = 24.sp)
             MessaggioGps(state.gps, 16)
         }
@@ -88,7 +98,10 @@ private fun LayoutOrizzontale(state: TachimetroState) {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
-            TestoGrande(state.direzione ?: "–", Ambra, larghezzaEm = 1.6f, modifier = Modifier.weight(0.5f).fillMaxWidth())
+            Row(Modifier.weight(0.5f).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                TestoGrande(state.direzione ?: "–", Ambra, larghezzaEm = 1.6f, modifier = Modifier.weight(1f).fillMaxSize())
+                state.limite?.let { Cartello(it, Modifier.fillMaxHeight(0.85f)) }
+            }
             Box(Modifier.weight(0.5f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                 BloccoVia(state, dimensione = 28, righe = 3)
             }
@@ -101,10 +114,17 @@ private fun LayoutOrizzontale(state: TachimetroState) {
 private fun LayoutPip(state: TachimetroState) {
     Column(Modifier.fillMaxSize().padding(6.dp)) {
         Row(Modifier.weight(0.78f).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            TestoGrande(velocita(state), Bianco, larghezzaEm = 1.85f, modifier = Modifier.weight(0.68f).fillMaxSize())
+            TestoGrande(velocita(state), coloreVelocita(state), larghezzaEm = 1.85f, modifier = Modifier.weight(0.68f).fillMaxSize())
             Column(Modifier.weight(0.32f).fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
-                TestoGrande(state.direzione ?: "–", Ambra, larghezzaEm = 1.6f, modifier = Modifier.weight(0.6f).fillMaxWidth())
-                TestoGrande("km/h", Grigio, larghezzaEm = 2.6f, modifier = Modifier.weight(0.4f).fillMaxWidth())
+                TestoGrande(state.direzione ?: "–", Ambra, larghezzaEm = 1.6f, modifier = Modifier.weight(0.4f).fillMaxWidth())
+                val limite = state.limite
+                if (limite != null) {
+                    Box(Modifier.weight(0.6f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                        Cartello(limite, Modifier.fillMaxHeight(0.95f))
+                    }
+                } else {
+                    TestoGrande("km/h", Grigio, larghezzaEm = 2.6f, modifier = Modifier.weight(0.6f).fillMaxWidth())
+                }
             }
         }
         TestoGrande(
@@ -144,6 +164,32 @@ private fun MessaggioGps(gps: GpsStatus, dimensione: Int) {
         GpsStatus.OK -> null
     }
     if (testo != null) Text(testo, color = Ambra, fontSize = dimensione.sp, textAlign = TextAlign.Center)
+}
+
+private fun coloreVelocita(state: TachimetroState): Color = if (state.oltreIlLimite) Rosso else Bianco
+
+/**
+ * Cartello rotondo del limite. Limite vero: bordo rosso e numero nero, come i cartelli stradali.
+ * Limite stimato: bordo e numero grigi, per far capire che non viene dalla mappa.
+ */
+@Composable
+private fun Cartello(limite: Limite, modifier: Modifier = Modifier) {
+    val coloreBordo = if (limite.stimato) Grigio else RossoCartello
+    val coloreNumero = if (limite.stimato) GrigioScuro else Nero
+    Box(modifier.aspectRatio(1f), contentAlignment = Alignment.Center) {
+        Canvas(Modifier.fillMaxSize()) {
+            val bordo = size.minDimension * 0.12f
+            drawCircle(coloreBordo)
+            drawCircle(Bianco, radius = size.minDimension / 2f - bordo)
+        }
+        val testo = limite.kmh.toString()
+        TestoGrande(
+            testo,
+            coloreNumero,
+            larghezzaEm = if (testo.length >= 3) 1.9f else 1.3f,
+            modifier = Modifier.fillMaxSize(0.62f),
+        )
+    }
 }
 
 private fun velocita(state: TachimetroState): String = state.kmh?.toString() ?: "--"
