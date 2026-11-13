@@ -11,6 +11,12 @@ data class GeoPoint(val lat: Double, val lon: Double)
 /** Una strada di OpenStreetMap: le sue etichette (nome, limite…) e i punti che la disegnano, in ordine. */
 data class Road(val id: Long, val tags: Map<String, String>, val points: List<GeoPoint>)
 
+/** Una zona abitata o commerciale disegnata sulla mappa: serve a capire se siamo "in città". */
+data class Area(val points: List<GeoPoint>)
+
+/** Limite di velocità da mostrare. [stimato] = non c'è sulla mappa, lo deduciamo dal Codice della Strada. */
+data class Limite(val kmh: Int, val stimato: Boolean)
+
 /** La strada su cui pensiamo di essere. [forward] = viaggiamo nel verso in cui è disegnata la strada. */
 data class RoadMatch(val road: Road, val distanceM: Double, val forward: Boolean)
 
@@ -51,6 +57,44 @@ object SpeedLimits {
             ?: leggiValore(tags["maxspeed"])
             ?: leggiValore(tags["maxspeed:type"])
             ?: leggiValore(tags["source:maxspeed"])
+    }
+
+    /**
+     * Limite stimato quando la mappa non lo indica (Codice della Strada, art. 142).
+     * Per svincoli, parcheggi e strade private non stimiamo: lì i limiti variano troppo.
+     */
+    fun stima(tipoStrada: String?, inCitta: Boolean): Int? = when (tipoStrada) {
+        "motorway" -> 130
+        "trunk" -> if (inCitta) 50 else 110
+        "primary", "secondary", "tertiary", "unclassified", "road" -> if (inCitta) 50 else 90
+        "residential" -> 50
+        else -> null
+    }
+
+    /** Il limite vero se c'è, altrimenti quello stimato. */
+    fun limiteOStima(strada: RoadMatch, inCitta: Boolean): Limite? {
+        limite(strada.road.tags, strada.forward)?.let { return Limite(it, stimato = false) }
+        return stima(strada.road.tags["highway"], inCitta)?.let { Limite(it, stimato = true) }
+    }
+
+    /** Vero se il punto è dentro almeno una delle zone abitate. */
+    fun inCitta(p: GeoPoint, zone: List<Area>): Boolean = zone.any { dentro(p, it.points) }
+
+    /** Test classico "punto nel poligono": conta quante volte una semiretta verso est attraversa il bordo. */
+    fun dentro(p: GeoPoint, poligono: List<GeoPoint>): Boolean {
+        if (poligono.size < 3) return false
+        var dentro = false
+        var j = poligono.size - 1
+        for (i in poligono.indices) {
+            val a = poligono[i]
+            val b = poligono[j]
+            if ((a.lat > p.lat) != (b.lat > p.lat)) {
+                val lonIncrocio = a.lon + (p.lat - a.lat) / (b.lat - a.lat) * (b.lon - a.lon)
+                if (p.lon < lonIncrocio) dentro = !dentro
+            }
+            j = i
+        }
+        return dentro
     }
 
     /**

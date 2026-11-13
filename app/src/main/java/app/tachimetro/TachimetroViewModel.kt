@@ -34,10 +34,10 @@ data class TachimetroState(
     val via: String? = null,
     val statoVia: StreetStatus = StreetStatus.IN_RICERCA,
     val gps: GpsStatus = GpsStatus.IN_ATTESA,
-    val limite: Int? = null, // limite di velocità della strada, se OpenStreetMap lo conosce
+    val limite: Limite? = null, // limite della strada: vero (dalla mappa) o stimato
 ) {
-    /** Rosso appena la velocità del GPS supera il limite, anche solo di 1 km/h. */
-    val oltreIlLimite: Boolean get() = kmh != null && limite != null && kmh > limite
+    /** Rosso appena la velocità del GPS supera il limite (vero o stimato), anche solo di 1 km/h. */
+    val oltreIlLimite: Boolean get() = kmh != null && limite != null && kmh > limite.kmh
 }
 
 class TachimetroViewModel(app: Application) : AndroidViewModel(app) {
@@ -55,11 +55,12 @@ class TachimetroViewModel(app: Application) : AndroidViewModel(app) {
         distanzaMinimaM = 200f, // riscarichiamo prima di uscire dalla zona già scaricata
     )
     private var stradeVicine: List<Road> = emptyList()
+    private var zoneAbitate: List<Area> = emptyList()
     private var centroStrade: Location? = null
     private var ultimoScaricamentoMs: Long? = null
     private var ultimoScaricamentoFallito = false
     private var scaricamentoJob: Job? = null
-    private var ultimoLimite: Int? = null
+    private var ultimoLimite: Limite? = null
     private var ultimaStradaTrovataMs = 0L
 
     private val _state = MutableStateFlow(TachimetroState())
@@ -184,9 +185,10 @@ class TachimetroViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun aggiornaLimite(loc: Location) {
         val ora = SystemClock.elapsedRealtime()
-        val strada = SpeedLimits.trova(stradeVicine, GeoPoint(loc.latitude, loc.longitude), ultimaDirezione)
+        val punto = GeoPoint(loc.latitude, loc.longitude)
+        val strada = SpeedLimits.trova(stradeVicine, punto, ultimaDirezione)
         if (strada != null) {
-            ultimoLimite = SpeedLimits.limite(strada.road.tags, strada.forward)
+            ultimoLimite = SpeedLimits.limiteOStima(strada, SpeedLimits.inCitta(punto, zoneAbitate))
             ultimaStradaTrovataMs = ora
         } else if (ora - ultimaStradaTrovataMs > 5_000) {
             // Nessuna strada riconosciuta da 5 secondi: meglio non mostrare un limite sbagliato.
@@ -202,9 +204,10 @@ class TachimetroViewModel(app: Application) : AndroidViewModel(app) {
 
         ultimoScaricamentoMs = ora
         scaricamentoJob = viewModelScope.launch {
-            val strade = overpass.stradeVicine(loc.latitude, loc.longitude)
-            if (strade != null) {
-                stradeVicine = strade
+            val dati = overpass.datiVicini(loc.latitude, loc.longitude)
+            if (dati != null) {
+                stradeVicine = dati.strade
+                zoneAbitate = dati.zoneAbitate
                 centroStrade = loc
                 ultimoScaricamentoFallito = false
             } else {

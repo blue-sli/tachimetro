@@ -28,6 +28,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.tachimetro.GpsStatus
+import app.tachimetro.Limite
 import app.tachimetro.StreetStatus
 import app.tachimetro.TachimetroState
 import kotlin.math.min
@@ -39,6 +40,7 @@ val GrigioChiaro = Color(0xFFE0E0E0)
 val Grigio = Color(0xFF9E9E9E)
 val Rosso = Color(0xFFFF3B30)
 val RossoCartello = Color(0xFFD32F2F)
+val GrigioScuro = Color(0xFF616161)
 
 @Composable
 fun TachimetroScreen(state: TachimetroState, inPip: Boolean) {
@@ -166,19 +168,24 @@ private fun MessaggioGps(gps: GpsStatus, dimensione: Int) {
 
 private fun coloreVelocita(state: TachimetroState): Color = if (state.oltreIlLimite) Rosso else Bianco
 
-/** Cartello rotondo del limite: cerchio bianco, bordo rosso, numero nero. */
+/**
+ * Cartello rotondo del limite. Limite vero: bordo rosso e numero nero, come i cartelli stradali.
+ * Limite stimato: bordo e numero grigi, per far capire che non viene dalla mappa.
+ */
 @Composable
-private fun Cartello(limite: Int, modifier: Modifier = Modifier) {
+private fun Cartello(limite: Limite, modifier: Modifier = Modifier) {
+    val coloreBordo = if (limite.stimato) Grigio else RossoCartello
+    val coloreNumero = if (limite.stimato) GrigioScuro else Nero
     Box(modifier.aspectRatio(1f), contentAlignment = Alignment.Center) {
         Canvas(Modifier.fillMaxSize()) {
             val bordo = size.minDimension * 0.12f
-            drawCircle(RossoCartello)
+            drawCircle(coloreBordo)
             drawCircle(Bianco, radius = size.minDimension / 2f - bordo)
         }
-        val testo = limite.toString()
+        val testo = limite.kmh.toString()
         TestoGrande(
             testo,
-            Nero,
+            coloreNumero,
             larghezzaEm = if (testo.length >= 3) 1.9f else 1.3f,
             modifier = Modifier.fillMaxSize(0.62f),
         )

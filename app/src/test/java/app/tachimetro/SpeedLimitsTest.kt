@@ -98,4 +98,39 @@ class SpeedLimitsTest {
         assertNull(SpeedLimits.trova(listOf(nord), GeoPoint(45.001, 9.005), direzione = null))
         assertNull(SpeedLimits.trova(emptyList(), GeoPoint(45.0, 9.0), direzione = null))
     }
+
+    @Test
+    fun stimaDalCodiceDellaStrada() {
+        assertEquals(130, SpeedLimits.stima("motorway", inCitta = false))
+        assertEquals(110, SpeedLimits.stima("trunk", inCitta = false))
+        assertEquals(50, SpeedLimits.stima("trunk", inCitta = true))
+        assertEquals(90, SpeedLimits.stima("primary", inCitta = false)) // per esempio una provinciale fuori città
+        assertEquals(50, SpeedLimits.stima("primary", inCitta = true))
+        assertEquals(50, SpeedLimits.stima("residential", inCitta = false))
+        assertNull(SpeedLimits.stima("motorway_link", inCitta = false))
+        assertNull(SpeedLimits.stima("service", inCitta = true))
+        assertNull(SpeedLimits.stima(null, inCitta = true))
+    }
+
+    @Test
+    fun limiteVeroPrimaDellaStima() {
+        val conLimite = RoadMatch(Road(1, mapOf("highway" to "primary", "maxspeed" to "70"), emptyList()), 0.0, true)
+        val senzaLimite = RoadMatch(Road(2, mapOf("highway" to "primary"), emptyList()), 0.0, true)
+        val senzaStima = RoadMatch(Road(3, mapOf("highway" to "service"), emptyList()), 0.0, true)
+        assertEquals(Limite(70, stimato = false), SpeedLimits.limiteOStima(conLimite, inCitta = false))
+        assertEquals(Limite(90, stimato = true), SpeedLimits.limiteOStima(senzaLimite, inCitta = false))
+        assertEquals(Limite(50, stimato = true), SpeedLimits.limiteOStima(senzaLimite, inCitta = true))
+        assertNull(SpeedLimits.limiteOStima(senzaStima, inCitta = true))
+    }
+
+    @Test
+    fun puntoDentroUnaZonaAbitata() {
+        // Quadrato da 45.0,9.0 a 45.01,9.01 (chiuso o aperto, funziona uguale)
+        val quadrato = listOf(GeoPoint(45.0, 9.0), GeoPoint(45.0, 9.01), GeoPoint(45.01, 9.01), GeoPoint(45.01, 9.0))
+        assertTrue(SpeedLimits.dentro(GeoPoint(45.005, 9.005), quadrato))
+        assertFalse(SpeedLimits.dentro(GeoPoint(45.02, 9.005), quadrato))
+        assertFalse(SpeedLimits.dentro(GeoPoint(45.005, 8.99), quadrato))
+        assertTrue(SpeedLimits.inCitta(GeoPoint(45.005, 9.005), listOf(Area(quadrato))))
+        assertFalse(SpeedLimits.inCitta(GeoPoint(45.005, 9.005), emptyList()))
+    }
 }
