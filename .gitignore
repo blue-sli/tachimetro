@@ -1,0 +1,14 @@
+# File generati dalla compilazione: non vanno salvati nel repository
+.gradle/
+build/
+app/build/
+local.properties
+.idea/
+*.iml
+.DS_Store
+captures/
+.kotlin/
+
+# Chiavi di firma: non vanno MAI salvate nel repository
+*.jks
+*.keystore
