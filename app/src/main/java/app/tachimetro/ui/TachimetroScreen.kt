@@ -173,7 +173,7 @@ private fun coloreVelocita(state: TachimetroState): Color = if (state.oltreIlLim
  * Limite stimato: bordo e numero grigi, per far capire che non viene dalla mappa.
  */
 @Composable
-private fun Cartello(limite: Limite, modifier: Modifier = Modifier) {
+internal fun Cartello(limite: Limite, modifier: Modifier = Modifier) {
     val coloreBordo = if (limite.stimato) Grigio else RossoCartello
     val coloreNumero = if (limite.stimato) GrigioScuro else Nero
     Box(modifier.aspectRatio(1f), contentAlignment = Alignment.Center) {
@@ -207,7 +207,7 @@ private fun testoVia(state: TachimetroState, breve: Boolean): String = when {
  * per esempio "888" in grassetto è circa 1,85 em. Con 0 conta solo l'altezza.
  */
 @Composable
-private fun TestoGrande(
+internal fun TestoGrande(
     testo: String,
     colore: Color,
     larghezzaEm: Float,
