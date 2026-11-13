@@ -105,4 +105,38 @@ class MotionTest {
         assertFalse(r.aggiorna(0, 14_000))
         assertTrue(r.aggiorna(0, 15_000))
     }
+
+    @Test
+    fun risveglioDopoRipartenza() {
+        val r = RitmoGps()
+        r.aggiorna(0, 0)
+        r.aggiorna(0, 2_000)
+        assertTrue(r.lento)
+        r.risveglia(5_000)
+        assertFalse(r.lento)
+        // Falso allarme: ancora fermi, dopo 2 secondi si torna lenti.
+        assertFalse(r.aggiorna(0, 6_000))
+        assertTrue(r.aggiorna(0, 7_000))
+    }
+
+    @Test
+    fun accelerometroRiconosceLaPartenza() {
+        val d = RilevatoreRipartenza()
+        var scattato = false
+        // Spinta costante di 1,5 m/s² letta 25 volte al secondo per un secondo.
+        for (i in 0..25) if (d.campione(1.5f, 0f, 0f, i * 40L)) scattato = true
+        assertTrue(scattato)
+    }
+
+    @Test
+    fun accelerometroIgnoraVibrazioniEBuche() {
+        val d = RilevatoreRipartenza()
+        var scattato = false
+        // Vibrazione del motore: piccola e continua.
+        for (i in 0..100) if (d.campione(if (i % 2 == 0) 0.3f else -0.3f, 0.1f, 0.1f, i * 40L)) scattato = true
+        // Buca: un colpo forte ma brevissimo.
+        if (d.campione(0f, 0f, 6f, 4_100)) scattato = true
+        for (i in 1..20) if (d.campione(0.2f, 0f, 0f, 4_100 + i * 40L)) scattato = true
+        assertFalse(scattato)
+    }
 }

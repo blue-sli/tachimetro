@@ -91,4 +91,49 @@ class RitmoGps(private val attesaPrimaDiRallentareMs: Long = 2_000) {
         lento = false
         fermoDaMs = null
     }
+
+    /**
+     * L'accelerometro dice che siamo ripartiti: torniamo veloci subito.
+     * Se era un falso allarme e restiamo a 0, dopo l'attesa normale si torna lenti.
+     */
+    fun risveglia(oraMs: Long) {
+        lento = false
+        fermoDaMs = oraMs
+    }
+}
+
+/**
+ * Capisce dall'accelerometro se l'auto è ripartita, mentre il GPS è in modalità "lenta".
+ * Riceve l'accelerazione senza la gravità (m/s²) e la "liscia" con una media mobile:
+ * scatta solo se la spinta resta sopra [soglia] per almeno [durataMinimaMs].
+ * Così le vibrazioni del motore e le buche (brevi) non bastano.
+ */
+class RilevatoreRipartenza(
+    private val soglia: Float = 0.6f,
+    private val durataMinimaMs: Long = 400,
+    private val alfa: Float = 0.2f,
+) {
+    private var media = 0f
+    private var sopraDaMs: Long? = null
+
+    fun azzera() {
+        media = 0f
+        sopraDaMs = null
+    }
+
+    /** Da chiamare a ogni lettura dell'accelerometro. Restituisce true quando rileva una ripartenza. */
+    fun campione(x: Float, y: Float, z: Float, oraMs: Long): Boolean {
+        val modulo = kotlin.math.sqrt(x * x + y * y + z * z)
+        media += alfa * (modulo - media)
+        if (media >= soglia) {
+            val da = sopraDaMs ?: oraMs.also { sopraDaMs = it }
+            if (oraMs - da >= durataMinimaMs) {
+                azzera()
+                return true
+            }
+        } else {
+            sopraDaMs = null
+        }
+        return false
+    }
 }

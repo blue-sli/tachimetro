@@ -2,6 +2,10 @@ package app.tachimetro
 
 import android.annotation.SuppressLint
 import android.app.Application
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import android.location.Location
 import android.location.LocationManager
 import android.os.Looper
@@ -68,6 +72,30 @@ class TachimetroViewModel(app: Application) : AndroidViewModel(app) {
 
     private var attivo = false
     private val ritmo = RitmoGps()
+
+    // Accelerometro: acceso solo da fermi, per accorgerci subito della ripartenza.
+    private val sensori = app.getSystemService(SensorManager::class.java)
+    private val sensoreLineare: Sensor? = sensori?.getDefaultSensor(Sensor.TYPE_LINEAR_ACCELERATION)
+    private val sensoreGrezzo: Sensor? = sensori?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+    private val rilevatore = RilevatoreRipartenza()
+    private var accelerometroAcceso = false
+    private val gravita = FloatArray(3)
+
+    private val ascoltaAccelerometro = object : SensorEventListener {
+        override fun onSensorChanged(event: SensorEvent) {
+            val v = event.values
+            val (x, y, z) = if (event.sensor.type == Sensor.TYPE_LINEAR_ACCELERATION) {
+                Triple(v[0], v[1], v[2])
+            } else {
+                // Senza sensore "lineare" togliamo noi la gravità con un filtro lento.
+                for (i in 0..2) gravita[i] = 0.9f * gravita[i] + 0.1f * v[i]
+                Triple(v[0] - gravita[0], v[1] - gravita[1], v[2] - gravita[2])
+            }
+            if (rilevatore.campione(x, y, z, event.timestamp / 1_000_000L)) ripartito()
+        }
+
+        override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
+    }
     private var controlloJob: Job? = null
     private var ricercaViaJob: Job? = null
 
@@ -126,6 +154,7 @@ class TachimetroViewModel(app: Application) : AndroidViewModel(app) {
     fun ferma() {
         if (!attivo) return
         attivo = false
+        spegniAccelerometro()
         fused.removeLocationUpdates(callback)
         controlloJob?.cancel()
     }
@@ -160,7 +189,10 @@ class TachimetroViewModel(app: Application) : AndroidViewModel(app) {
         aggiornaLimite(loc)
 
         val kmh = Motion.kmh(speedMs)
-        if (ritmo.aggiorna(kmh, SystemClock.elapsedRealtime()) && attivo) richiediPosizioni()
+        if (ritmo.aggiorna(kmh, SystemClock.elapsedRealtime()) && attivo) {
+            richiediPosizioni()
+            if (ritmo.lento) accendiAccelerometro() else spegniAccelerometro()
+        }
 
         _state.update {
             it.copy(
@@ -200,6 +232,29 @@ class TachimetroViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
         }
+    }
+
+    /** L'accelerometro ha sentito una ripartenza: GPS di nuovo veloce, subito. */
+    private fun ripartito() {
+        if (!attivo || !ritmo.lento) return
+        ritmo.risveglia(SystemClock.elapsedRealtime())
+        spegniAccelerometro()
+        richiediPosizioni()
+    }
+
+    private fun accendiAccelerometro() {
+        if (accelerometroAcceso) return
+        val sensore = sensoreLineare ?: sensoreGrezzo ?: return
+        rilevatore.azzera()
+        gravita.fill(0f)
+        // 25 letture al secondo: bastano e consumano pochissimo.
+        accelerometroAcceso = sensori?.registerListener(ascoltaAccelerometro, sensore, 40_000) == true
+    }
+
+    private fun spegniAccelerometro() {
+        if (!accelerometroAcceso) return
+        sensori?.unregisterListener(ascoltaAccelerometro)
+        accelerometroAcceso = false
     }
 
     private fun aggiornaLimite(loc: Location) {
