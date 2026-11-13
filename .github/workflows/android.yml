@@ -1,0 +1,81 @@
+# Compila l'app a ogni invio (push) su GitHub e pubblica l'APK nella pagina "Releases".
+# - branch principale (main): release normale, la più recente è in .../releases/latest
+# - altri branch: release di prova ("pre-release")
+name: Compila APK
+
+on:
+  push:
+    branches: ["**"]
+  workflow_dispatch:
+
+permissions:
+  contents: write # serve per creare la release
+
+concurrency:
+  group: apk-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Scarica il codice
+        uses: actions/checkout@v5
+
+      - name: Installa Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Prepara Gradle
+        uses: gradle/actions/setup-gradle@v5
+
+      # Facoltativo: se nei segreti del repository c'è la chiave di firma, la usiamo,
+      # così ogni nuovo APK si installa sopra il precedente senza disinstallare.
+      - name: Prepara la chiave di firma (se presente)
+        env:
+          KEYSTORE_BASE64: ${{ secrets.TACHIMETRO_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/tachimetro.jks"
+            echo "TACHIMETRO_KEYSTORE=$RUNNER_TEMP/tachimetro.jks" >> "$GITHUB_ENV"
+            echo "Chiave di firma trovata."
+          else
+            echo "::notice::Nessuna chiave nei segreti: l'APK usa una firma provvisoria."
+          fi
+
+      - name: Test e compilazione
+        env:
+          TACHIMETRO_KEYSTORE_PASSWORD: ${{ secrets.TACHIMETRO_KEYSTORE_PASSWORD }}
+          TACHIMETRO_KEY_ALIAS: ${{ secrets.TACHIMETRO_KEY_ALIAS }}
+          TACHIMETRO_KEY_PASSWORD: ${{ secrets.TACHIMETRO_KEY_PASSWORD }}
+        run: ./gradlew --no-daemon testDebugUnitTest assembleRelease
+
+      - name: Rinomina l'APK
+        run: cp app/build/outputs/apk/release/app-release.apk "tachimetro-build-${GITHUB_RUN_NUMBER}.apk"
+
+      - name: Salva l'APK tra i file della compilazione
+        uses: actions/upload-artifact@v5
+        with:
+          name: tachimetro-build-${{ github.run_number }}
+          path: tachimetro-build-*.apk
+
+      - name: Pubblica la release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          TAG="build-${GITHUB_RUN_NUMBER}"
+          APK="tachimetro-build-${GITHUB_RUN_NUMBER}.apk"
+          if [ "$BRANCH" = "main" ]; then
+            TIPO="--latest"
+            TITOLO="Tachimetro build ${GITHUB_RUN_NUMBER}"
+          else
+            TIPO="--prerelease"
+            TITOLO="Tachimetro build ${GITHUB_RUN_NUMBER} (prova: ${BRANCH})"
+          fi
+          NOTE="Per installarla: dal telefono tocca il file ${APK} qui sotto in «Assets», poi apri il file scaricato.
+          Branch: ${BRANCH} - commit: ${GITHUB_SHA}"
+          gh release create "$TAG" "$APK" --target "$GITHUB_SHA" --title "$TITOLO" --notes "$NOTE" $TIPO
