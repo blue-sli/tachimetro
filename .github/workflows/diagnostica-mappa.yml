@@ -1,0 +1,26 @@
+# Controllo da lanciare a mano (scheda Actions → Diagnostica mappa → Run workflow):
+# prova i server della mappa (Overpass) con le stesse richieste dell'app e stampa
+# quanto ci mettono e cosa rispondono. Utile se i limiti di velocità smettono di arrivare.
+name: Diagnostica mappa
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  overpass:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v5
+      - name: Prova i server Overpass
+        env:
+          OVERPASS_LIVE: "1"
+        run: ./gradlew --no-daemon testDebugUnitTest --tests "app.tachimetro.OverpassLiveTest"

@@ -35,6 +35,7 @@ enum class StreetStatus { IN_RICERCA, OK, SENZA_NOME, SENZA_INTERNET }
 data class TachimetroState(
     val kmh: Int? = null, // null = nessun segnale GPS recente
     val direzione: String? = null,
+    val rotta: Float? = null, // direzione di marcia in gradi (0 = nord, 90 = est), per la bussola
     val via: String? = null,
     val statoVia: StreetStatus = StreetStatus.IN_RICERCA,
     val gps: GpsStatus = GpsStatus.IN_ATTESA,
@@ -61,6 +62,7 @@ class TachimetroViewModel(app: Application) : AndroidViewModel(app) {
     private var stradeVicine: List<Road> = emptyList()
     private var zoneAbitate: List<Area> = emptyList()
     private var centroStrade: Location? = null
+    private var raggioStrade = SpeedLimits.raggioScaricamento(null)
     private var ultimoScaricamentoMs: Long? = null
     private var ultimoScaricamentoFallito = false
     private var scaricamentoJob: Job? = null
@@ -157,6 +159,8 @@ class TachimetroViewModel(app: Application) : AndroidViewModel(app) {
         spegniAccelerometro()
         fused.removeLocationUpdates(callback)
         controlloJob?.cancel()
+        // Non lasciamo sullo schermo una velocità vecchia: alla riapertura si riparte da "--".
+        _state.update { it.copy(kmh = null, gps = GpsStatus.IN_ATTESA) }
     }
 
     override fun onCleared() {
@@ -198,6 +202,7 @@ class TachimetroViewModel(app: Application) : AndroidViewModel(app) {
             it.copy(
                 kmh = kmh,
                 direzione = ultimaDirezione?.let(Compass::sigla),
+                rotta = ultimaDirezione,
                 gps = GpsStatus.OK,
                 limite = ultimoLimite,
             )
@@ -274,15 +279,28 @@ class TachimetroViewModel(app: Application) : AndroidViewModel(app) {
         if (scaricamentoJob?.isActive == true) return
         val ora = SystemClock.elapsedRealtime()
         val distanza = centroStrade?.distanceTo(loc)
-        if (!policyStrade.daCercare(ora, ultimoScaricamentoMs, ultimoScaricamentoFallito, distanza)) return
+        // Riscarichiamo quando abbiamo percorso il 60% del raggio dell'ultima zona:
+        // così, anche se il server è lento, arriviamo ai nuovi dati prima di uscire da quelli vecchi.
+        if (!policyStrade.daCercare(ora, ultimoScaricamentoMs, ultimoScaricamentoFallito, distanza, raggioStrade * 0.6f)) return
 
         ultimoScaricamentoMs = ora
+        val kmh = _state.value.kmh
+        val raggio = SpeedLimits.raggioScaricamento(kmh)
+        val qui = GeoPoint(loc.latitude, loc.longitude)
+        val direzione = ultimaDirezione
+        // In movimento la zona è spostata in avanti di metà raggio, nella direzione di marcia.
+        val centro = if (direzione != null && (kmh ?: 0) >= 20) {
+            SpeedLimits.puntoAvanti(qui, direzione, raggio * 0.5)
+        } else {
+            qui
+        }
         scaricamentoJob = viewModelScope.launch {
-            val dati = overpass.datiVicini(loc.latitude, loc.longitude)
+            val dati = overpass.datiVicini(centro.lat, centro.lon, raggio)
             if (dati != null) {
                 stradeVicine = dati.strade
                 zoneAbitate = dati.zoneAbitate
                 centroStrade = loc
+                raggioStrade = raggio
                 ultimoScaricamentoFallito = false
             } else {
                 // Senza internet teniamo le strade già scaricate: funzionano finché restiamo in zona.

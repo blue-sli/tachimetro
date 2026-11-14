@@ -52,6 +52,14 @@ android {
     buildFeatures {
         compose = true
     }
+    testOptions {
+        unitTests.all {
+            // Mostra nei registri di GitHub quello che i test stampano (serve alla prova dei server mappa).
+            it.testLogging {
+                showStandardStreams = true
+            }
+        }
+    }
 }
 
 dependencies {

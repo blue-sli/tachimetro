@@ -41,6 +41,21 @@ object SpeedLimits {
     private val SOLO_NUMERO = Regex("""^(\d{1,3})(?:\s*km/h)?$""")
     private val MIGLIA = Regex("""^(\d{1,3})\s*mph$""")
 
+    /**
+     * Quanto grande scaricare la zona intorno a noi: i server della mappa possono metterci
+     * 30 secondi a rispondere, e nel frattempo ci spostiamo. Più andiamo veloci, più grande.
+     * Circa 600 m in città, fino a 1500 m in autostrada.
+     */
+    fun raggioScaricamento(kmh: Int?): Int = ((kmh ?: 0) * 12).coerceIn(600, 1500)
+
+    /** Il punto a [metri] di distanza da [p] nella direzione [direzioneGradi] (0 = nord, 90 = est). */
+    fun puntoAvanti(p: GeoPoint, direzioneGradi: Float, metri: Double): GeoPoint {
+        val rad = Math.toRadians(direzioneGradi.toDouble())
+        val dLat = metri * kotlin.math.cos(rad) / RAGGIO_TERRA_M
+        val dLon = metri * kotlin.math.sin(rad) / (RAGGIO_TERRA_M * cos(Math.toRadians(p.lat)))
+        return GeoPoint(p.lat + Math.toDegrees(dLat), p.lon + Math.toDegrees(dLon))
+    }
+
     /** Trasforma un valore come "50", "30 mph" o "IT:urban" in km/h. Null se non è un limite chiaro. */
     fun leggiValore(grezzo: String?): Int? {
         val testo = grezzo?.split(';')?.firstOrNull()?.trim() ?: return null
