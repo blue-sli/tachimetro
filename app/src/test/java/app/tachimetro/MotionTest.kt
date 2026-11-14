@@ -139,4 +139,11 @@ class MotionTest {
         for (i in 1..20) if (d.campione(0.2f, 0f, 0f, 4_100 + i * 40L)) scattato = true
         assertFalse(scattato)
     }
+
+    @Test
+    fun distanzaMinimaPersonalizzata() {
+        val p = StreetLookupPolicy(distanzaMinimaM = 25f)
+        assertFalse(p.daCercare(60_000, 0, false, 500f, distanzaMinima = 600f))
+        assertTrue(p.daCercare(60_000, 0, false, 700f, distanzaMinima = 600f))
+    }
 }

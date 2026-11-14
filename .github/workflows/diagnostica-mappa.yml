@@ -1,10 +1,9 @@
-# Controllo temporaneo: prova i server della mappa (Overpass) con la stessa richiesta dell'app,
-# per capire perché i limiti di velocità non arrivano. Da togliere quando il problema è risolto.
+# Controllo da lanciare a mano (scheda Actions → Diagnostica mappa → Run workflow):
+# prova i server della mappa (Overpass) con le stesse richieste dell'app e stampa
+# quanto ci mettono e cosa rispondono. Utile se i limiti di velocità smettono di arrivare.
 name: Diagnostica mappa
 
 on:
-  push:
-    branches: ["bussola"]
   workflow_dispatch:
 
 permissions:

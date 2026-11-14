@@ -55,13 +55,14 @@ class StreetLookupPolicy(
         ultimoTentativoMs: Long?,
         ultimoFallito: Boolean,
         distanzaDallUltimaViaM: Float?,
+        distanzaMinima: Float = distanzaMinimaM,
     ): Boolean {
         if (ultimoTentativoMs != null) {
             val attesa = if (ultimoFallito) attesaDopoErroreMs else intervalloMs
             if (oraMs - ultimoTentativoMs < attesa) return false
         }
         if (ultimoFallito) return true
-        return distanzaDallUltimaViaM == null || distanzaDallUltimaViaM >= distanzaMinimaM
+        return distanzaDallUltimaViaM == null || distanzaDallUltimaViaM >= distanzaMinima
     }
 }
 

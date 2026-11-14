@@ -133,4 +133,23 @@ class SpeedLimitsTest {
         assertTrue(SpeedLimits.inCitta(GeoPoint(45.005, 9.005), listOf(Area(quadrato))))
         assertFalse(SpeedLimits.inCitta(GeoPoint(45.005, 9.005), emptyList()))
     }
+
+    @Test
+    fun raggioCresceConLaVelocita() {
+        assertEquals(600, SpeedLimits.raggioScaricamento(null))
+        assertEquals(600, SpeedLimits.raggioScaricamento(30))
+        assertEquals(1080, SpeedLimits.raggioScaricamento(90))
+        assertEquals(1500, SpeedLimits.raggioScaricamento(130))
+    }
+
+    @Test
+    fun puntoInAvanti() {
+        val p = GeoPoint(45.0, 9.0)
+        val nord = SpeedLimits.puntoAvanti(p, 0f, 1000.0)
+        assertEquals(45.009, nord.lat, 0.0005)
+        assertEquals(9.0, nord.lon, 1e-9)
+        val est = SpeedLimits.puntoAvanti(p, 90f, 1000.0)
+        assertEquals(45.0, est.lat, 1e-6)
+        assertEquals(1000.0, SpeedLimits.distanzaDalSegmento(est, p, p), 2.0)
+    }
 }

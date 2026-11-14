@@ -18,15 +18,18 @@ data class DatiMappa(val strade: List<Road>, val zoneAbitate: List<Area>)
  * Scarica da OpenStreetMap (servizio Overpass) le strade intorno a un punto, con i loro limiti,
  * e le zone abitate (per stimare il limite quando manca).
  * Regole d'uso (dev.overpass-api.de/overpass-doc/en/preface/commons.html): meno di 10.000
- * richieste al giorno. Qui una richiesta copre circa 300 m e si ripete al massimo ogni 10 s.
+ * richieste al giorno. Qui una richiesta copre da 600 a 1500 m e si ripete solo dopo
+ * essersi spostati di buona parte di quella distanza (al massimo ogni 10 s).
+ * I server pubblici sono spesso molto carichi: possono metterci 30 secondi a rispondere,
+ * quindi aspettiamo fino a 50 secondi.
  */
 class OverpassClient {
 
     /** Null se non c'è risposta (per esempio manca internet). */
-    suspend fun datiVicini(lat: Double, lon: Double, raggioM: Int = RAGGIO_M): DatiMappa? =
+    suspend fun datiVicini(lat: Double, lon: Double, raggioM: Int): DatiMappa? =
         withContext(Dispatchers.IO) {
             val query = costruisciQuery(lat, lon, raggioM)
-            // Se un server è sovraccarico o non risponde, proviamo il successivo.
+            // Se un server è al completo (risponde 429/502/504) o non risponde, proviamo il successivo.
             for (indirizzo in SERVER) {
                 chiedi(indirizzo, query).dati?.let { return@withContext it }
             }
@@ -34,7 +37,7 @@ class OverpassClient {
         }
 
     companion object {
-        const val RAGGIO_M = 300
+        const val RAGGIO_M = 1000
         /** Server Overpass pubblici e gratuiti: il primo è quello principale, gli altri sono di riserva. */
         internal val SERVER = listOf(
             "https://overpass-api.de/api/interpreter",
@@ -43,14 +46,14 @@ class OverpassClient {
         )
         private const val USER_AGENT = "TachimetroAndroid/1.0 (app personale; Android)"
 
-        /** Solo strade dove passano le auto. */
+        /** Solo strade dove passano le auto (senza parcheggi e passi carrai, che appesantiscono i dati). */
         private const val TIPI_STRADA =
-            "motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service|road|" +
+            "motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|road|" +
                 "motorway_link|trunk_link|primary_link|secondary_link|tertiary_link"
 
         internal fun costruisciQuery(lat: Double, lon: Double, raggioM: Int = RAGGIO_M): String = String.format(
             Locale.US,
-            "[out:json][timeout:15];(" +
+            "[out:json][timeout:40];(" +
                 "way(around:%1\$d,%2\$.6f,%3\$.6f)[highway~\"^(%4\$s)$\"];" +
                 "way(around:%1\$d,%2\$.6f,%3\$.6f)[landuse~\"^(residential|commercial|retail)$\"];" +
                 ");out tags geom;",
@@ -63,8 +66,8 @@ class OverpassClient {
                 conn = (URL(indirizzo).openConnection() as HttpURLConnection).apply {
                     requestMethod = "POST"
                     doOutput = true
-                    connectTimeout = 8_000
-                    readTimeout = 20_000
+                    connectTimeout = 10_000
+                    readTimeout = 50_000
                     setRequestProperty("User-Agent", USER_AGENT)
                     setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
                 }
