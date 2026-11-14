@@ -39,6 +39,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
@@ -354,7 +355,7 @@ private fun Quadrante(state: TachimetroState, modifier: Modifier = Modifier, sca
  * (= dritto davanti a te); gira la ghiera con N, E, S, O, così in alto c'è sempre
  * la direzione in cui stai andando. Sotto, la sigla (N, NE, E…).
  * La ghiera gira sempre dal lato più corto (da 350° a 10° passa per il nord, non fa il giro).
- * Le lettere restano dritte mentre la ghiera gira, così si leggono sempre.
+ * Le lettere girano con la ghiera: quella in cima è sempre dritta.
  * Se la direzione non è ancora nota, la ghiera sta con il nord in alto e la freccia è grigia.
  */
 @Composable
@@ -392,7 +393,9 @@ private fun Bussola(rotta: Float?, sigla: String?, modifier: Modifier = Modifier
                 )
             }
 
-            // Lettere: carattere normale (non "tecnico"), così la O di Ovest non sembra uno zero.
+            // Lettere: girano con la ghiera, con la base verso il centro (come su una bussola vera):
+            // quella in cima, cioè la direzione di marcia, è sempre dritta.
+            // Carattere normale (non "tecnico"), così la O di Ovest non sembra uno zero.
             listOf("N" to 0f, "E" to 90f, "S" to 180f, "O" to 270f).forEach { (lettera, gradi) ->
                 val layout = misuratore.measure(
                     lettera,
@@ -402,8 +405,11 @@ private fun Bussola(rotta: Float?, sigla: String?, modifier: Modifier = Modifier
                         fontSize = (r * 0.2f).toSp(),
                     ),
                 )
-                val p = puntoSulCerchio(sulloSchermo(gradi), r * 0.62f)
-                drawText(layout, topLeft = Offset(p.x - layout.size.width / 2f, p.y - layout.size.height / 2f))
+                val schermo = sulloSchermo(gradi)
+                val p = puntoSulCerchio(schermo, r * 0.62f)
+                rotate(schermo + 90f, pivot = p) {
+                    drawText(layout, topLeft = Offset(p.x - layout.size.width / 2f, p.y - layout.size.height / 2f))
+                }
             }
 
             // Freccia fissa al centro, verso l'alto: "vado dritto".
