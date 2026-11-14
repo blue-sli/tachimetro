@@ -35,6 +35,7 @@ enum class StreetStatus { IN_RICERCA, OK, SENZA_NOME, SENZA_INTERNET }
 data class TachimetroState(
     val kmh: Int? = null, // null = nessun segnale GPS recente
     val direzione: String? = null,
+    val rotta: Float? = null, // direzione di marcia in gradi (0 = nord, 90 = est), per la bussola
     val via: String? = null,
     val statoVia: StreetStatus = StreetStatus.IN_RICERCA,
     val gps: GpsStatus = GpsStatus.IN_ATTESA,
@@ -157,6 +158,8 @@ class TachimetroViewModel(app: Application) : AndroidViewModel(app) {
         spegniAccelerometro()
         fused.removeLocationUpdates(callback)
         controlloJob?.cancel()
+        // Non lasciamo sullo schermo una velocità vecchia: alla riapertura si riparte da "--".
+        _state.update { it.copy(kmh = null, gps = GpsStatus.IN_ATTESA) }
     }
 
     override fun onCleared() {
@@ -198,6 +201,7 @@ class TachimetroViewModel(app: Application) : AndroidViewModel(app) {
             it.copy(
                 kmh = kmh,
                 direzione = ultimaDirezione?.let(Compass::sigla),
+                rotta = ultimaDirezione,
                 gps = GpsStatus.OK,
                 limite = ultimoLimite,
             )

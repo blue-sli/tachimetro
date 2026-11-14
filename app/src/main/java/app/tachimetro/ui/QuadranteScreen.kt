@@ -5,7 +5,6 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -22,10 +21,15 @@ import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
@@ -92,7 +96,10 @@ private fun QuadranteVerticale(state: TachimetroState) {
             .padding(horizontal = 20.dp, vertical = 12.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        RigaStato(state, Modifier.fillMaxWidth())
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+            RigaStato(state, Modifier.weight(1f).padding(top = 8.dp))
+            Bussola(state.rotta, state.direzione, Modifier.width(96.dp).height(124.dp))
+        }
         Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
             Quadrante(state, Modifier.fillMaxWidth())
         }
@@ -117,6 +124,12 @@ private fun QuadranteOrizzontale(state: TachimetroState) {
             verticalArrangement = Arrangement.SpaceBetween,
         ) {
             RigaStato(state, Modifier.fillMaxWidth())
+            // Bussola accanto al quadrante, al centro della colonna di destra.
+            Bussola(
+                state.rotta,
+                state.direzione,
+                Modifier.weight(1f).fillMaxWidth().padding(vertical = 12.dp),
+            )
             BloccoViaQuadrante(state, Modifier.fillMaxWidth())
         }
     }
@@ -155,7 +168,7 @@ private fun QuadrantePip(state: TachimetroState) {
     }
 }
 
-/** In alto: pallino e stato del GPS a sinistra, direzione di marcia in una "pillola" rossa a destra. */
+/** Pallino e stato del GPS. */
 @Composable
 private fun RigaStato(state: TachimetroState, modifier: Modifier = Modifier) {
     val (testo, colore) = when (state.gps) {
@@ -173,37 +186,6 @@ private fun RigaStato(state: TachimetroState, modifier: Modifier = Modifier) {
         )
         Spacer(Modifier.width(10.dp))
         Text(testo, color = Grigio, fontFamily = Mono, fontSize = 14.sp, letterSpacing = 0.25.em)
-        Spacer(Modifier.weight(1f))
-        Box(
-            Modifier
-                .border(1.dp, Bordo, RoundedCornerShape(50))
-                .padding(4.dp)
-        ) {
-            Box(
-                Modifier
-                    .drawBehind {
-                        // alone rosso intorno alla pillola
-                        drawRoundRect(
-                            Rosso.copy(alpha = 0.25f),
-                            topLeft = Offset(-6.dp.toPx(), -6.dp.toPx()),
-                            size = Size(size.width + 12.dp.toPx(), size.height + 12.dp.toPx()),
-                            cornerRadius = androidx.compose.ui.geometry.CornerRadius(size.height),
-                        )
-                    }
-                    .background(Rosso, RoundedCornerShape(50))
-                    .padding(horizontal = 18.dp, vertical = 6.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    state.direzione ?: "–",
-                    color = Bianco,
-                    fontFamily = Mono,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 18.sp,
-                    letterSpacing = 0.15.em,
-                )
-            }
-        }
     }
 }
 
@@ -365,5 +347,90 @@ private fun Quadrante(state: TachimetroState, modifier: Modifier = Modifier, sca
                 letterSpacing = 0.35.em,
             )
         }
+    }
+}
+
+/**
+ * Piccola bussola: rosa fissa con il nord in alto (N rossa, E, S, O) e una freccia rossa
+ * che indica la direzione di marcia. Sotto, la sigla (N, NE, E…).
+ * La freccia gira sempre dal lato più corto (da 350° a 10° passa per il nord, non fa il giro).
+ * Se la direzione non è ancora nota, la freccia non c'è.
+ */
+@Composable
+private fun Bussola(rotta: Float?, sigla: String?, modifier: Modifier = Modifier) {
+    val misuratore = rememberTextMeasurer()
+    var obiettivo by remember { mutableFloatStateOf(rotta ?: 0f) }
+    LaunchedEffect(rotta) {
+        if (rotta != null) {
+            val differenza = ((rotta - obiettivo) % 360f + 540f) % 360f - 180f
+            obiettivo += differenza
+        }
+    }
+    val angolo by animateFloatAsState(obiettivo, tween(durationMillis = 800), label = "bussola")
+
+    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+        Canvas(Modifier.weight(1f).aspectRatio(1f, matchHeightConstraintsFirst = true)) {
+            val r = size.minDimension / 2f
+
+            drawCircle(Brush.radialGradient(listOf(FondoCentro, FondoBordo), center = center, radius = r), radius = r)
+            drawCircle(Bordo, radius = r * 0.985f, style = Stroke(width = r * 0.03f))
+
+            // Tacche: lunghe ai 4 punti cardinali, corte a quelli intermedi.
+            for (i in 0 until 8) {
+                val cardinale = i % 2 == 0
+                val a = i * 45f - 90f // 0° = nord (in alto)
+                drawLine(
+                    if (cardinale) TaccaGrande else TaccaSpenta,
+                    start = puntoSulCerchio(a, if (cardinale) r * 0.80f else r * 0.86f),
+                    end = puntoSulCerchio(a, r * 0.94f),
+                    strokeWidth = r * (if (cardinale) 0.04f else 0.025f),
+                    cap = StrokeCap.Round,
+                )
+            }
+
+            // Lettere: carattere normale (non "tecnico"), così la O di Ovest non sembra uno zero.
+            listOf("N" to 0f, "E" to 90f, "S" to 180f, "O" to 270f).forEach { (lettera, gradi) ->
+                val layout = misuratore.measure(
+                    lettera,
+                    TextStyle(
+                        color = if (lettera == "N") Rosso else Grigio,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = (r * 0.2f).toSp(),
+                    ),
+                )
+                val p = puntoSulCerchio(gradi - 90f, r * 0.62f)
+                drawText(layout, topLeft = Offset(p.x - layout.size.width / 2f, p.y - layout.size.height / 2f))
+            }
+
+            if (rotta != null) {
+                rotate(angolo, pivot = center) {
+                    val punta = Path().apply {
+                        moveTo(center.x, center.y - r * 0.46f)
+                        lineTo(center.x - r * 0.13f, center.y + r * 0.02f)
+                        lineTo(center.x + r * 0.13f, center.y + r * 0.02f)
+                        close()
+                    }
+                    val coda = Path().apply {
+                        moveTo(center.x, center.y + r * 0.32f)
+                        lineTo(center.x - r * 0.09f, center.y + r * 0.02f)
+                        lineTo(center.x + r * 0.09f, center.y + r * 0.02f)
+                        close()
+                    }
+                    // Alone rosso intorno alla punta, come l'arco del quadrante.
+                    drawPath(punta, Rosso.copy(alpha = 0.25f), style = Stroke(width = r * 0.08f))
+                    drawPath(punta, Rosso)
+                    drawPath(coda, TaccaSpenta)
+                }
+                drawCircle(Bianco, radius = r * 0.05f)
+            }
+        }
+        Spacer(Modifier.height(6.dp))
+        Text(
+            sigla ?: "–",
+            color = Bianco,
+            fontWeight = FontWeight.Bold,
+            fontSize = 18.sp,
+            letterSpacing = 0.15.em,
+        )
     }
 }

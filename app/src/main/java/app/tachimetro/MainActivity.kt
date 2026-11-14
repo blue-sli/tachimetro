@@ -28,6 +28,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.tachimetro.ui.Ambra
 import app.tachimetro.ui.GpsSpentoScreen
@@ -66,7 +67,13 @@ class MainActivity : ComponentActivity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         inPip = isInPictureInPictureMode
-        addOnPictureInPictureModeChangedListener { info -> inPip = info.isInPictureInPictureMode }
+        addOnPictureInPictureModeChangedListener { info ->
+            inPip = info.isInPictureInPictureMode
+            // Finestrella chiusa (non riaperta a schermo intero): ora sì che fermiamo il GPS.
+            if (!info.isInPictureInPictureMode && !lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
+                viewModel.ferma()
+            }
+        }
 
         tema = Tema.entries.firstOrNull { it.name == getPreferences(MODE_PRIVATE).getString(CHIAVE_TEMA, null) }
             ?: Tema.CLASSICO
@@ -104,8 +111,9 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onStop() {
-        // Quando l'app non è più visibile (né a schermo intero né nella finestrella) fermiamo il GPS.
-        viewModel.ferma()
+        // Quando l'app non è più visibile fermiamo il GPS. Ma alcuni telefoni (per esempio i Samsung)
+        // "fermano" l'app anche quando è nella finestrella: lì il GPS deve continuare a funzionare.
+        if (!isInPictureInPictureMode) viewModel.ferma()
         super.onStop()
     }
 
