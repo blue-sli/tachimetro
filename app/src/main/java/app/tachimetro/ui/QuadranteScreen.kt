@@ -29,7 +29,6 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
@@ -351,10 +350,12 @@ private fun Quadrante(state: TachimetroState, modifier: Modifier = Modifier, sca
 }
 
 /**
- * Piccola bussola: rosa fissa con il nord in alto (N rossa, E, S, O) e una freccia rossa
- * che indica la direzione di marcia. Sotto, la sigla (N, NE, E…).
- * La freccia gira sempre dal lato più corto (da 350° a 10° passa per il nord, non fa il giro).
- * Se la direzione non è ancora nota, la freccia non c'è.
+ * Piccola bussola "come i navigatori": la freccia al centro resta ferma e punta in alto
+ * (= dritto davanti a te); gira la ghiera con N, E, S, O, così in alto c'è sempre
+ * la direzione in cui stai andando. Sotto, la sigla (N, NE, E…).
+ * La ghiera gira sempre dal lato più corto (da 350° a 10° passa per il nord, non fa il giro).
+ * Le lettere restano dritte mentre la ghiera gira, così si leggono sempre.
+ * Se la direzione non è ancora nota, la ghiera sta con il nord in alto e la freccia è grigia.
  */
 @Composable
 private fun Bussola(rotta: Float?, sigla: String?, modifier: Modifier = Modifier) {
@@ -371,14 +372,17 @@ private fun Bussola(rotta: Float?, sigla: String?, modifier: Modifier = Modifier
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         Canvas(Modifier.weight(1f).aspectRatio(1f, matchHeightConstraintsFirst = true)) {
             val r = size.minDimension / 2f
+            // Posizione sullo schermo di una direzione della ghiera (0° = nord): la ghiera è
+            // ruotata all'indietro della nostra rotta, così la rotta finisce in alto.
+            fun sulloSchermo(gradi: Float) = gradi - angolo - 90f
 
             drawCircle(Brush.radialGradient(listOf(FondoCentro, FondoBordo), center = center, radius = r), radius = r)
             drawCircle(Bordo, radius = r * 0.985f, style = Stroke(width = r * 0.03f))
 
-            // Tacche: lunghe ai 4 punti cardinali, corte a quelli intermedi.
+            // Tacche della ghiera: lunghe ai 4 punti cardinali, corte a quelli intermedi.
             for (i in 0 until 8) {
                 val cardinale = i % 2 == 0
-                val a = i * 45f - 90f // 0° = nord (in alto)
+                val a = sulloSchermo(i * 45f)
                 drawLine(
                     if (cardinale) TaccaGrande else TaccaSpenta,
                     start = puntoSulCerchio(a, if (cardinale) r * 0.80f else r * 0.86f),
@@ -398,31 +402,30 @@ private fun Bussola(rotta: Float?, sigla: String?, modifier: Modifier = Modifier
                         fontSize = (r * 0.2f).toSp(),
                     ),
                 )
-                val p = puntoSulCerchio(gradi - 90f, r * 0.62f)
+                val p = puntoSulCerchio(sulloSchermo(gradi), r * 0.62f)
                 drawText(layout, topLeft = Offset(p.x - layout.size.width / 2f, p.y - layout.size.height / 2f))
             }
 
-            if (rotta != null) {
-                rotate(angolo, pivot = center) {
-                    val punta = Path().apply {
-                        moveTo(center.x, center.y - r * 0.46f)
-                        lineTo(center.x - r * 0.13f, center.y + r * 0.02f)
-                        lineTo(center.x + r * 0.13f, center.y + r * 0.02f)
-                        close()
-                    }
-                    val coda = Path().apply {
-                        moveTo(center.x, center.y + r * 0.32f)
-                        lineTo(center.x - r * 0.09f, center.y + r * 0.02f)
-                        lineTo(center.x + r * 0.09f, center.y + r * 0.02f)
-                        close()
-                    }
-                    // Alone rosso intorno alla punta, come l'arco del quadrante.
-                    drawPath(punta, Rosso.copy(alpha = 0.25f), style = Stroke(width = r * 0.08f))
-                    drawPath(punta, Rosso)
-                    drawPath(coda, TaccaSpenta)
-                }
-                drawCircle(Bianco, radius = r * 0.05f)
+            // Freccia fissa al centro, verso l'alto: "vado dritto".
+            val colore = if (rotta != null) Rosso else TaccaSpenta
+            val freccia = Path().apply {
+                moveTo(center.x, center.y - r * 0.40f)
+                lineTo(center.x + r * 0.20f, center.y + r * 0.22f)
+                lineTo(center.x, center.y + r * 0.10f)
+                lineTo(center.x - r * 0.20f, center.y + r * 0.22f)
+                close()
             }
+            if (rotta != null) drawPath(freccia, Rosso.copy(alpha = 0.25f), style = Stroke(width = r * 0.08f))
+            drawPath(freccia, colore)
+
+            // Piccolo segno fisso in cima alla ghiera: indica la direzione di marcia.
+            val segno = Path().apply {
+                moveTo(center.x, center.y - r * 0.80f)
+                lineTo(center.x - r * 0.07f, center.y - r * 0.97f)
+                lineTo(center.x + r * 0.07f, center.y - r * 0.97f)
+                close()
+            }
+            drawPath(segno, colore)
         }
         Spacer(Modifier.height(6.dp))
         Text(

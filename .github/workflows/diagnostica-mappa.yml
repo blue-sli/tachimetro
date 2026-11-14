@@ -1,0 +1,27 @@
+# Controllo temporaneo: prova i server della mappa (Overpass) con la stessa richiesta dell'app,
+# per capire perché i limiti di velocità non arrivano. Da togliere quando il problema è risolto.
+name: Diagnostica mappa
+
+on:
+  push:
+    branches: ["bussola"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  overpass:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v5
+      - name: Prova i server Overpass
+        env:
+          OVERPASS_LIVE: "1"
+        run: ./gradlew --no-daemon testDebugUnitTest --tests "app.tachimetro.OverpassLiveTest"
